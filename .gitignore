@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment variables and secrets
+.env
+.env.*
+*.key
+
+# Data files
+data/raw/*
+data/interim/*
+data/processed/*
+
+# Keep folder structure
+!data/raw/.gitkeep
+!data/raw/mapbiomas/.gitkeep
+!data/raw/inpe/.gitkeep
+!data/interim/.gitkeep
+!data/interim/parsed_documents/.gitkeep
+!data/interim/cleaned_mapbiomas/.gitkeep
+!data/interim/cleaned_inpe/.gitkeep
+!data/processed/.gitkeep
+
+# Vector databases
+chroma_db/
+vector_store/
+*.faiss
+*.index
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
