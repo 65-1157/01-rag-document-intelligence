@@ -1,0 +1,253 @@
+"""
+Text cleaning utilities for agro_rag.
+
+This module prepares extracted PDF text for chunking and retrieval.
+
+Typical input:
+- page-level text extracted from MapBiomas and INPE PDF documents.
+
+Typical output:
+- cleaner text with normalized spaces, line breaks and repeated artifacts removed.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pandas as pd
+
+
+def normalize_whitespace(text: str) -> str:
+    """
+    Normalize spaces, tabs and line breaks.
+
+    Parameters
+    ----------
+    text : str
+        Raw text.
+
+    Returns
+    -------
+    str
+        Text with normalized whitespace.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    text = text.replace("\xa0", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def remove_repeated_page_artifacts(text: str) -> str:
+    """
+    Remove common repeated PDF artifacts.
+
+    This function is intentionally conservative. It avoids removing too much
+    content because technical reports may contain important headers, captions
+    and table notes.
+
+    Parameters
+    ----------
+    text : str
+        Text extracted from a PDF page.
+
+    Returns
+    -------
+    str
+        Text with common artifacts reduced.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    lines = text.splitlines()
+    cleaned_lines: list[str] = []
+
+    for line in lines:
+        line = line.strip()
+
+        # Skip empty lines.
+        if not line:
+            continue
+
+        # Skip lines that are only page numbers.
+        if re.fullmatch(r"\d+", line):
+            continue
+
+        # Skip very short isolated separators.
+        if re.fullmatch(r"[-–—_ ]+", line):
+            continue
+
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
+
+
+def fix_broken_hyphenation(text: str) -> str:
+    """
+    Fix simple hyphenation breaks caused by PDF line wrapping.
+
+    Example:
+    'desmata-\\nmento' becomes 'desmatamento'.
+
+    Parameters
+    ----------
+    text : str
+        Text extracted from PDF.
+
+    Returns
+    -------
+    str
+        Text with broken hyphenation reduced.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+
+def normalize_line_breaks(text: str) -> str:
+    """
+    Convert most line breaks into spaces while preserving paragraph breaks.
+
+    Parameters
+    ----------
+    text : str
+        Text after basic cleaning.
+
+    Returns
+    -------
+    str
+        Text with more retrieval-friendly paragraph structure.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    # Preserve paragraph breaks temporarily.
+    text = re.sub(r"\n{2,}", " <PARAGRAPH_BREAK> ", text)
+
+    # Convert remaining line breaks to spaces.
+    text = re.sub(r"\n", " ", text)
+
+    # Restore paragraph breaks.
+    text = text.replace(" <PARAGRAPH_BREAK> ", "\n\n")
+
+    return normalize_whitespace(text)
+
+
+def clean_text(text: str) -> str:
+    """
+    Apply the full cleaning pipeline to a text string.
+
+    Parameters
+    ----------
+    text : str
+        Raw extracted text.
+
+    Returns
+    -------
+    str
+        Cleaned text.
+    """
+    text = normalize_whitespace(text)
+    text = fix_broken_hyphenation(text)
+    text = remove_repeated_page_artifacts(text)
+    text = normalize_line_breaks(text)
+    text = normalize_whitespace(text)
+
+    return text
+
+
+def clean_parsed_pages(
+    parsed_df: pd.DataFrame,
+    text_column: str = "text",
+    output_column: str = "clean_text",
+    min_chars: int = 30,
+) -> pd.DataFrame:
+    """
+    Clean a page-level DataFrame produced by parse_pdf.py.
+
+    Parameters
+    ----------
+    parsed_df : pandas.DataFrame
+        DataFrame with extracted page text.
+
+    text_column : str
+        Name of the column containing raw text.
+
+    output_column : str
+        Name of the output column containing cleaned text.
+
+    min_chars : int
+        Minimum number of characters required to keep a page.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with cleaned text and empty pages removed.
+    """
+    if text_column not in parsed_df.columns:
+        raise ValueError(f"Column not found: {text_column}")
+
+    df = parsed_df.copy()
+
+    df[output_column] = df[text_column].fillna("").apply(clean_text)
+    df["clean_text_length"] = df[output_column].str.len()
+
+    df = df[df["clean_text_length"] >= min_chars].reset_index(drop=True)
+
+    return df
+
+
+def clean_parsed_pages_file(
+    input_path: str | Path,
+    output_path: str | Path,
+    text_column: str = "text",
+    output_column: str = "clean_text",
+    min_chars: int = 30,
+) -> pd.DataFrame:
+    """
+    Load parsed PDF pages from Parquet, clean the text and save the result.
+
+    Parameters
+    ----------
+    input_path : str or Path
+        Input Parquet path generated by parse_pdf.py.
+
+    output_path : str or Path
+        Output Parquet path for cleaned pages.
+
+    text_column : str
+        Name of the column containing raw text.
+
+    output_column : str
+        Name of the output column containing cleaned text.
+
+    min_chars : int
+        Minimum number of characters required to keep a page.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Cleaned page-level DataFrame.
+    """
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    df = pd.read_parquet(input_path)
+    cleaned_df = clean_parsed_pages(
+        parsed_df=df,
+        text_column=text_column,
+        output_column=output_column,
+        min_chars=min_chars,
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned_df.to_parquet(output_path, index=False)
+
+    return cleaned_df
