@@ -1,0 +1,32 @@
+# Core data handling
+pandas
+numpy
+pyarrow
+
+# Document processing
+pypdf
+pdfplumber
+
+# RAG and embeddings
+langchain
+langchain-community
+chromadb
+sentence-transformers
+
+# Optional OpenAI integration
+openai
+langchain-openai
+
+# App
+streamlit
+
+# Visualization
+matplotlib
+plotly
+
+# Utilities
+python-dotenv
+tqdm
+
+# Testing
+pytest
