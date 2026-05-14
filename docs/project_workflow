@@ -1,0 +1,765 @@
+# Project Workflow
+
+## 1. Overview
+
+This document explains the operational workflow of the project.
+
+The project has two complementary workflows:
+
+1. **Document RAG workflow**
+2. **Structured environmental workflow**
+
+Together, they support evidence-based environmental screening using:
+
+- MapBiomas;
+- INPE / TerraBrasilis;
+- document retrieval;
+- municipality-year indicators;
+- environmental risk scoring;
+- cited RAG answers.
+
+The system is designed to support analysts, not to replace human review or legal interpretation.
+
+---
+
+## 2. High-Level Workflow
+
+```text
+MapBiomas + INPE sources
+        │
+        ├── Document workflow
+        │       ├── PDF documents
+        │       ├── text extraction
+        │       ├── text cleaning
+        │       ├── chunking
+        │       ├── embeddings
+        │       ├── vector database
+        │       └── RAG answers
+        │
+        └── Structured workflow
+                ├── MapBiomas table
+                ├── INPE / PRODES table
+                ├── municipality-year panel
+                ├── environmental indicators
+                ├── risk score
+                └── structured evidence
+```
+
+---
+
+## 3. Document RAG Workflow
+
+The document RAG workflow processes MapBiomas and INPE / TerraBrasilis documents so they can be retrieved by semantic search.
+
+### 3.1 Input
+
+Expected input folders:
+
+```text
+data/raw/mapbiomas/documents/
+data/raw/inpe/documents/
+```
+
+Expected document types:
+
+- technical reports;
+- methodology documents;
+- monitoring reports;
+- source documentation;
+- PDF files related to MapBiomas, INPE, TerraBrasilis or PRODES.
+
+---
+
+### 3.2 Step 1 — Parse PDF Documents
+
+Module:
+
+```text
+src/agro_rag/processing/parse_pdf.py
+```
+
+Main function:
+
+```python
+parse_and_save_pdf_folder()
+```
+
+Purpose:
+
+```text
+PDF documents
+→ page-level text table
+```
+
+Expected output:
+
+```text
+data/interim/parsed_documents/mapbiomas_pages.parquet
+data/interim/parsed_documents/inpe_pages.parquet
+```
+
+Main fields:
+
+| Field | Description |
+|---|---|
+| `source` | MapBiomas or INPE |
+| `document_name` | Name of the document |
+| `file_path` | Local file path |
+| `page_number` | Page number extracted from the PDF |
+| `year` | Reference year, when available |
+| `theme` | Document theme |
+| `language` | Document language |
+| `text` | Extracted page text |
+| `text_length` | Number of characters in the raw text |
+
+---
+
+### 3.3 Step 2 — Clean Extracted Text
+
+Module:
+
+```text
+src/agro_rag/processing/clean_text.py
+```
+
+Main function:
+
+```python
+clean_parsed_pages()
+```
+
+Purpose:
+
+```text
+raw extracted text
+→ cleaner retrieval-ready text
+```
+
+Cleaning includes:
+
+- whitespace normalization;
+- simple page artifact removal;
+- broken hyphenation correction;
+- removal of empty or very short pages.
+
+Expected output:
+
+```text
+data/interim/parsed_documents/all_pages_clean.parquet
+```
+
+Main generated fields:
+
+| Field | Description |
+|---|---|
+| `clean_text` | Cleaned text |
+| `clean_text_length` | Number of characters in cleaned text |
+
+---
+
+### 3.4 Step 3 — Create Document Chunks
+
+Module:
+
+```text
+src/agro_rag/processing/chunk_documents.py
+```
+
+Main function:
+
+```python
+chunk_pages_dataframe()
+```
+
+Purpose:
+
+```text
+cleaned pages
+→ retrieval-ready chunks
+```
+
+Default chunking strategy:
+
+```text
+chunk_size = 250 words
+chunk_overlap = 40 words
+```
+
+Expected output:
+
+```text
+data/processed/document_chunks.parquet
+```
+
+Main generated fields:
+
+| Field | Description |
+|---|---|
+| `chunk_id` | Unique chunk identifier |
+| `chunk_index` | Chunk number inside the page |
+| `chunk_text` | Text to be embedded |
+| `chunk_word_count` | Number of words in the chunk |
+| `chunk_char_count` | Number of characters in the chunk |
+| `source` | Source metadata |
+| `document_name` | Document metadata |
+| `page_number` | Page metadata |
+| `year` | Year metadata |
+| `theme` | Theme metadata |
+
+---
+
+### 3.5 Step 4 — Build Vector Store
+
+Module:
+
+```text
+src/agro_rag/rag/vector_store.py
+```
+
+Main function:
+
+```python
+build_vector_store_from_chunks()
+```
+
+Purpose:
+
+```text
+document chunks
+→ embeddings
+→ ChromaDB vector store
+```
+
+Expected local output:
+
+```text
+chroma_db/
+```
+
+Important:
+
+```text
+chroma_db/
+```
+
+is generated locally and should not be committed to GitHub.
+
+The `.gitignore` should exclude it.
+
+---
+
+### 3.6 Step 5 — Retrieve Evidence
+
+Module:
+
+```text
+src/agro_rag/rag/vector_store.py
+```
+
+Main function:
+
+```python
+query_vector_store()
+```
+
+Purpose:
+
+```text
+user question
+→ semantic search
+→ top-k retrieved chunks
+```
+
+Example:
+
+```python
+retrieved_df = query_vector_store(
+    question="What does MapBiomas indicate about land use and land cover?",
+    persist_directory="chroma_db",
+    collection_name="agro_environmental_documents",
+    n_results=5,
+)
+```
+
+Expected output fields:
+
+| Field | Description |
+|---|---|
+| `rank` | Retrieval rank |
+| `chunk_id` | Retrieved chunk ID |
+| `distance` | Vector distance |
+| `chunk_text` | Retrieved text |
+| `source` | Source metadata |
+| `document_name` | Document metadata |
+| `page_number` | Page metadata |
+| `year` | Year metadata |
+| `theme` | Theme metadata |
+
+---
+
+### 3.7 Step 6 — Generate RAG Answer
+
+Module:
+
+```text
+src/agro_rag/rag/qa_chain.py
+```
+
+Main functions:
+
+```python
+answer_question()
+answer_question_without_llm()
+```
+
+Purpose:
+
+```text
+question
++ retrieved evidence
++ prompt template
+→ final answer
+```
+
+The system can run in two modes:
+
+| Mode | Description |
+|---|---|
+| Retrieval-only | Retrieves and displays evidence without calling an LLM |
+| LLM-based RAG | Retrieves evidence and generates an answer using an LLM |
+
+The answer should include:
+
+- direct answer;
+- evidence used;
+- interpretation;
+- limitations;
+- confidence level.
+
+---
+
+## 4. Structured Environmental Workflow
+
+The structured workflow builds numerical evidence from simplified MapBiomas and INPE / PRODES tables.
+
+---
+
+### 4.1 Input
+
+Expected cleaned MapBiomas table:
+
+```text
+data/interim/cleaned_mapbiomas/mapbiomas_municipality_year.parquet
+```
+
+Expected columns:
+
+```text
+municipality_code
+municipality_name
+state
+biome
+year
+mapbiomas_forest_area_ha
+mapbiomas_native_vegetation_area_ha
+mapbiomas_agriculture_area_ha
+mapbiomas_pasture_area_ha
+```
+
+Expected cleaned INPE / PRODES table:
+
+```text
+data/interim/cleaned_inpe/inpe_prodes_municipality_year.parquet
+```
+
+Expected columns:
+
+```text
+municipality_code
+year
+inpe_prodes_deforestation_area_ha
+```
+
+---
+
+### 4.2 Step 1 — Build Environmental Panel
+
+Module:
+
+```text
+src/agro_rag/structured/build_environmental_panel.py
+```
+
+Main function:
+
+```python
+build_environmental_panel_file()
+```
+
+Purpose:
+
+```text
+MapBiomas municipality-year table
++ INPE / PRODES municipality-year table
+→ unified environmental panel
+```
+
+Merge keys:
+
+```text
+municipality_code
+year
+```
+
+Expected output:
+
+```text
+data/processed/municipality_environmental_panel.parquet
+```
+
+Expected columns:
+
+| Column | Description |
+|---|---|
+| `municipality_code` | Municipality identifier |
+| `municipality_name` | Municipality name |
+| `state` | Brazilian state |
+| `biome` | Biome |
+| `year` | Reference year |
+| `mapbiomas_forest_area_ha` | Forest area from MapBiomas |
+| `mapbiomas_native_vegetation_area_ha` | Native vegetation area from MapBiomas |
+| `mapbiomas_agriculture_area_ha` | Agriculture area from MapBiomas |
+| `mapbiomas_pasture_area_ha` | Pasture area from MapBiomas |
+| `inpe_prodes_deforestation_area_ha` | Annual deforestation from INPE / PRODES |
+
+---
+
+### 4.3 Step 2 — Calculate Environmental Indicators
+
+Module:
+
+```text
+src/agro_rag/structured/risk_score.py
+```
+
+Main functions:
+
+```python
+add_native_vegetation_loss()
+add_agriculture_or_pasture_expansion()
+```
+
+Generated indicators:
+
+| Indicator | Meaning |
+|---|---|
+| `mapbiomas_native_vegetation_loss_ha` | Year-to-year reduction in native vegetation |
+| `mapbiomas_agriculture_or_pasture_expansion_ha` | Year-to-year expansion of agriculture plus pasture |
+| `inpe_prodes_deforestation_area_ha` | Annual deforestation evidence from INPE / PRODES |
+
+---
+
+### 4.4 Step 3 — Calculate Environmental Risk Score
+
+Module:
+
+```text
+src/agro_rag/structured/risk_score.py
+```
+
+Main function:
+
+```python
+score_environmental_panel_file()
+```
+
+Default formula:
+
+```text
+environmental_risk_score =
+    0.50 * normalized_inpe_prodes_deforestation_area_ha
+  + 0.30 * normalized_mapbiomas_native_vegetation_loss_ha
+  + 0.20 * normalized_mapbiomas_agriculture_or_pasture_expansion_ha
+```
+
+Expected output:
+
+```text
+data/processed/municipality_environmental_panel_scored.parquet
+```
+
+Generated columns:
+
+| Column | Description |
+|---|---|
+| `inpe_prodes_deforestation_area_ha_normalized` | Normalized INPE / PRODES component |
+| `mapbiomas_native_vegetation_loss_ha_normalized` | Normalized vegetation loss component |
+| `mapbiomas_agriculture_or_pasture_expansion_ha_normalized` | Normalized expansion component |
+| `environmental_risk_score` | Final screening score |
+| `environmental_risk_class` | Low, Medium or High |
+
+Risk classes:
+
+| Score Range | Class |
+|---|---|
+| 0.00 to 0.33 | Low |
+| 0.34 to 0.66 | Medium |
+| 0.67 to 1.00 | High |
+
+---
+
+### 4.5 Step 4 — Create Structured Evidence for RAG
+
+The structured panel can be converted into a text block and inserted into the risk summary prompt.
+
+Example structured evidence:
+
+```text
+Municipality: Sinop
+State: MT
+Biome: Amazon
+Year: 2024
+
+INPE / PRODES deforestation area (ha): 2520
+MapBiomas native vegetation loss (ha): 8000
+MapBiomas agriculture area (ha): 101000
+MapBiomas pasture area (ha): 119000
+
+Environmental screening score: 0.82
+Environmental screening class: High
+```
+
+This allows the RAG system to combine:
+
+```text
+retrieved document evidence
++ structured numerical evidence
+→ environmental screening summary
+```
+
+---
+
+## 5. Evaluation Workflow
+
+The project includes an evaluation workflow to check retrieval and answer behavior.
+
+---
+
+### 5.1 Golden Questions
+
+Module:
+
+```text
+src/agro_rag/evaluation/golden_questions.py
+```
+
+Main function:
+
+```python
+save_golden_questions()
+```
+
+Output:
+
+```text
+data/processed/rag_eval_questions.csv
+```
+
+The golden questions test:
+
+- MapBiomas retrieval;
+- INPE retrieval;
+- source comparison;
+- risk screening behavior;
+- insufficient evidence behavior;
+- unsafe legal conclusion avoidance.
+
+---
+
+### 5.2 Retrieval Evaluation
+
+Module:
+
+```text
+src/agro_rag/evaluation/evaluate_retrieval.py
+```
+
+Main function:
+
+```python
+evaluate_retrieval_file()
+```
+
+Output:
+
+```text
+reports/rag_retrieval_evaluation.csv
+```
+
+Metrics:
+
+| Metric | Meaning |
+|---|---|
+| `source_hit_at_k` | Whether expected source appears in top-k |
+| `recall_at_k` | Same as source hit in version 1 |
+| `precision_at_k` | Fraction of top-k chunks matching expected source |
+| `retrieved_sources` | Sources retrieved |
+| `retrieved_documents` | Documents retrieved |
+
+---
+
+### 5.3 Answer Evaluation
+
+Module:
+
+```text
+src/agro_rag/evaluation/evaluate_answers.py
+```
+
+Main function:
+
+```python
+generate_and_evaluate_answers_file()
+```
+
+Outputs:
+
+```text
+reports/rag_generated_answers.csv
+reports/rag_answer_evaluation.csv
+```
+
+Checks:
+
+| Check | Purpose |
+|---|---|
+| Citation / evidence presence | Verifies whether evidence is mentioned |
+| Limitation presence | Checks whether limitations are stated |
+| Cautious language | Checks for careful analytical wording |
+| Unsafe claim flag | Detects legal overclaims |
+| Answer score | Simple score from 0 to 3 |
+
+---
+
+## 6. Application Workflow
+
+The Streamlit app connects the user interface to the RAG pipeline.
+
+App file:
+
+```text
+app/streamlit_app.py
+```
+
+Run command:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+App workflow:
+
+```text
+user question
+→ optional source filter
+→ vector retrieval
+→ retrieved chunks
+→ optional LLM answer
+→ answer + evidence display
+```
+
+The app supports:
+
+- MapBiomas / INPE evidence retrieval;
+- retrieval-only mode;
+- LLM-based RAG mode;
+- source filtering;
+- inspection of retrieved chunks;
+- display of execution metadata.
+
+---
+
+## 7. Expected Execution Order
+
+Recommended order:
+
+```text
+1. Install dependencies
+2. Run Notebook 01 — Document Pipeline Demo
+3. Run Notebook 02 — Structured Panel and Risk Score Demo
+4. Review generated outputs
+5. Launch Streamlit app
+6. Run retrieval evaluation
+7. Add real MapBiomas and INPE files
+8. Rerun notebooks
+9. Update report and README examples
+```
+
+---
+
+## 8. Generated Files
+
+After running the main workflows, the project may generate:
+
+```text
+data/interim/parsed_documents/all_pages_clean.parquet
+data/processed/document_chunks.parquet
+data/processed/rag_eval_questions.csv
+data/processed/municipality_environmental_panel.parquet
+data/processed/municipality_environmental_panel_scored.parquet
+reports/rag_retrieval_evaluation.csv
+reports/rag_generated_answers.csv
+reports/rag_answer_evaluation.csv
+reports/figures/environmental_risk_score_by_municipality.png
+chroma_db/
+```
+
+Important:
+
+```text
+chroma_db/
+data/interim/
+data/processed/
+```
+
+may contain generated local files. Large generated files should not be committed unless explicitly needed for demonstration.
+
+---
+
+## 9. Safety and Interpretation Workflow
+
+All answers and scores should follow this interpretation:
+
+```text
+Evidence-based environmental screening
+→ not legal judgment
+→ requires human review
+```
+
+The system must avoid claims such as:
+
+- illegal deforestation was proven;
+- a company committed environmental crime;
+- a municipality is legally non-compliant;
+- a farm is guilty;
+- ESG approval or rejection is final.
+
+Preferred language:
+
+- “The available evidence suggests...”
+- “The indicators point to...”
+- “This should be interpreted as a screening signal...”
+- “Further analysis is required...”
+- “This is not a legal conclusion...”
+
+---
+
+## 10. Final Workflow Principle
+
+The project should be understood as:
+
+> A RAG-based environmental intelligence assistant that organizes MapBiomas and INPE evidence, supports retrieval-based explanations, and helps analysts prioritize deeper review.
+
+It should not be understood as:
+
+> A system that determines illegal deforestation, assigns responsibility, or replaces expert legal, environmental or geospatial analysis.
