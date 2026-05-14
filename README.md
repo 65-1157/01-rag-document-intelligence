@@ -119,6 +119,7 @@ MapBiomas table
     ├── interim/
     └── processed/
 
+``` 
 ## 6 - Main Components
 | Component                  | Purpose                                                      |
 | -------------------------- | ------------------------------------------------------------ |
