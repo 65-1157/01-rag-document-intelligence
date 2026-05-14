@@ -59,6 +59,109 @@ The reduced scope keeps the project simpler, easier to evaluate and easier to ex
 
 More details are available in: docs/data_sources.md
 
+## 4. System Architecture
+This project has two layers:
+Document RAG layer
+PDF documents
+→ text extraction
+→ text cleaning
+→ document chunking
+→ vector database
+→ semantic retrieval
+→ cited RAG answer
+Structured Environmental layer
+MapBiomas table
++ INPE / PRODES table
+→ municipality-year environmental panel
+→ environmental indicators
+→ risk score
+→ structured evidence for RAG
+
+## 5. Repository Structure
+
+01-rag-document-intelligence/
+│
+├── README.md
+├── requirements.txt
+├── .gitignore
+│
+├── docs/
+│   ├── data_sources.md
+│   ├── architecture.md
+│   ├── evaluation.md
+│   └── limitations.md
+│
+├── prompts/
+│   ├── system_prompt.md
+│   ├── rag_answer_prompt.md
+│   └── risk_summary_prompt.md
+│
+├── notebooks/
+│   ├── 01_document_pipeline_demo.ipynb
+│   └── 02_structured_panel_and_risk_score_demo.ipynb
+│
+├── src/
+│   └── agro_rag/
+│       ├── utils/
+│       ├── processing/
+│       ├── structured/
+│       ├── rag/
+│       └── evaluation/
+│
+├── app/
+│   └── streamlit_app.py
+│
+├── reports/
+│   └── figures/
+│
+└── data/
+    ├── raw/
+    ├── interim/
+    └── processed/
+
+## 6 - Main Components
+| Component                  | Purpose                                                      |
+| -------------------------- | ------------------------------------------------------------ |
+| `src/agro_rag/processing/` | PDF parsing, text cleaning and document chunking             |
+| `src/agro_rag/rag/`        | Embeddings, vector store, prompt loading and QA chain        |
+| `src/agro_rag/structured/` | Environmental panel construction and risk scoring            |
+| `src/agro_rag/evaluation/` | Golden questions, retrieval evaluation and answer evaluation |
+| `app/streamlit_app.py`     | Interactive RAG interface                                    |
+| `prompts/`                 | Prompt templates for safe and evidence-based answers         |
+| `docs/`                    | Technical documentation                                      |
+| `notebooks/`               | Executable project demonstrations                            |
+
+## 7 - Environmental Risk Score
+environmental_risk_score =
+    0.50 * normalized_inpe_prodes_deforestation_area_ha
+  + 0.30 * normalized_mapbiomas_native_vegetation_loss_ha
+  + 0.20 * normalized_mapbiomas_agriculture_or_pasture_expansion_ha
+    
+Risk Classes
+| Score Range  | Class  |
+| ------------ | ------ |
+| 0.00 to 0.33 | Low    |
+| 0.34 to 0.66 | Medium |
+| 0.67 to 1.00 | High   |
+
+## 8. Important Limitations
+
+This project does not determine:
+
+illegal deforestation;
+legal responsibility;
+rural property compliance;
+environmental crime;
+final ESG approval or rejection.
+
+The system supports:
+
+evidence organization;
+environmental screening;
+retrieval-based explanation;
+analyst decision support.
+
+All outputs require human review before operational, legal, financial or public use.
 
 ## How to Run the Project
 
