@@ -1,0 +1,420 @@
+# How to Run the Project
+
+## 1. Overview
+
+This guide explains how to run the project locally.
+
+The project has two main execution flows:
+
+1. Document RAG pipeline
+2. Structured environmental panel and risk score pipeline
+
+The document RAG pipeline processes MapBiomas and INPE / TerraBrasilis documents, creates text chunks, builds a vector database and supports retrieval-based question answering.
+
+The structured pipeline builds a municipality-year environmental panel and calculates an explainable environmental screening score.
+
+---
+
+## 2. Clone the Repository
+
+```bash
+git clone <your-repository-url>
+cd 01-rag-document-intelligence
+```
+
+Replace `<your-repository-url>` with the HTTPS URL of your GitHub repository.
+
+Example:
+
+```bash
+git clone https://github.com/YOUR_USER/01-rag-document-intelligence.git
+cd 01-rag-document-intelligence
+```
+
+---
+
+## 3. Create a Virtual Environment
+
+### macOS / Linux
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### Windows Git Bash
+
+```bash
+python -m venv .venv
+source .venv/Scripts/activate
+```
+
+---
+
+## 4. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Check that Python can import the project package:
+
+```bash
+python -c "import sys; print(sys.version)"
+```
+
+---
+
+## 5. Prepare the Data Folders
+
+The project expects this structure:
+
+```text
+data/
+├── raw/
+│   ├── mapbiomas/
+│   │   └── documents/
+│   └── inpe/
+│       └── documents/
+│
+├── interim/
+└── processed/
+```
+
+Place PDF documents in:
+
+```text
+data/raw/mapbiomas/documents/
+data/raw/inpe/documents/
+```
+
+Examples of useful files:
+
+- MapBiomas reports;
+- MapBiomas methodology documents;
+- INPE / TerraBrasilis / PRODES reports;
+- INPE / TerraBrasilis methodology documents.
+
+The first notebook can also run with synthetic fallback data if no PDFs are available.
+
+---
+
+## 6. Run Notebook 01 — Document Pipeline Demo
+
+Open and run:
+
+```text
+notebooks/01_document_pipeline_demo.ipynb
+```
+
+This notebook executes:
+
+```text
+PDF documents
+→ page-level text extraction
+→ text cleaning
+→ document chunking
+→ document_chunks.parquet
+→ ChromaDB vector store
+→ retrieval test
+→ golden questions
+→ retrieval evaluation
+```
+
+Expected outputs:
+
+```text
+data/interim/parsed_documents/all_pages_clean.parquet
+data/processed/document_chunks.parquet
+data/processed/rag_eval_questions.csv
+reports/rag_retrieval_evaluation.csv
+chroma_db/
+```
+
+Important:
+
+```text
+chroma_db/
+```
+
+is generated locally and should not be committed to GitHub.
+
+---
+
+## 7. Run Notebook 02 — Structured Panel and Risk Score Demo
+
+Open and run:
+
+```text
+notebooks/02_structured_panel_and_risk_score_demo.ipynb
+```
+
+This notebook executes:
+
+```text
+MapBiomas municipality-year table
++ INPE / PRODES municipality-year table
+→ unified environmental panel
+→ native vegetation loss
+→ agriculture/pasture expansion
+→ normalized indicators
+→ environmental risk score
+→ environmental risk class
+```
+
+Expected outputs:
+
+```text
+data/interim/cleaned_mapbiomas/mapbiomas_municipality_year.parquet
+data/interim/cleaned_inpe/inpe_prodes_municipality_year.parquet
+data/processed/municipality_environmental_panel.parquet
+data/processed/municipality_environmental_panel_scored.parquet
+reports/figures/environmental_risk_score_by_municipality.png
+```
+
+The notebook currently uses synthetic data for demonstration. Later, synthetic data should be replaced by real cleaned MapBiomas and INPE tables.
+
+---
+
+## 8. Run the Streamlit App
+
+After running Notebook 01 and building the vector store, run:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+The app allows the user to:
+
+- ask questions;
+- retrieve relevant MapBiomas and INPE evidence;
+- inspect retrieved text chunks;
+- run retrieval-only mode;
+- generate LLM-based answers when an API key is configured.
+
+---
+
+## 9. Optional: Configure OpenAI API Key
+
+The system can run in retrieval-only mode without an OpenAI API key.
+
+To generate LLM-based answers, configure:
+
+### macOS / Linux
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+```
+
+### Windows PowerShell
+
+```powershell
+$env:OPENAI_API_KEY="your_key_here"
+```
+
+### Windows Git Bash
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+```
+
+Do not commit API keys to GitHub.
+
+The `.gitignore` file should exclude:
+
+```text
+.env
+.env.*
+```
+
+---
+
+## 10. Run Retrieval Evaluation
+
+Notebook 01 already runs a basic retrieval evaluation.
+
+The golden question file is:
+
+```text
+data/processed/rag_eval_questions.csv
+```
+
+The retrieval evaluation output is:
+
+```text
+reports/rag_retrieval_evaluation.csv
+```
+
+The first retrieval metrics include:
+
+| Metric | Meaning |
+|---|---|
+| `source_hit_at_k` | Whether the expected source appeared in top-k results |
+| `recall_at_k` | Same as source hit in the first simple version |
+| `precision_at_k` | Fraction of retrieved chunks matching the expected source |
+| `retrieved_sources` | Sources returned by retrieval |
+| `retrieved_documents` | Documents returned by retrieval |
+
+---
+
+## 11. Run the App in Retrieval-Only Mode
+
+Use this mode when no OpenAI API key is available.
+
+In the Streamlit sidebar:
+
+```text
+Retrieval-only mode = checked
+```
+
+Then ask questions such as:
+
+```text
+What does MapBiomas indicate about land use and land cover?
+```
+
+```text
+What does INPE / PRODES indicate about annual deforestation monitoring?
+```
+
+```text
+Can this system prove illegal deforestation?
+```
+
+The last question should trigger a cautious answer because the system is not designed to produce legal conclusions.
+
+---
+
+## 12. Expected Execution Order
+
+Recommended order:
+
+```text
+1. Clone repository
+2. Create virtual environment
+3. Install dependencies
+4. Run Notebook 01
+5. Run Notebook 02
+6. Launch Streamlit app
+7. Review evaluation outputs
+8. Replace synthetic examples with real MapBiomas and INPE files
+9. Rerun notebooks
+10. Update final report
+```
+
+---
+
+## 13. Troubleshooting
+
+### Problem: `ModuleNotFoundError: No module named 'agro_rag'`
+
+Possible causes:
+
+- The notebook is not running from the project root.
+- The `src/` folder is not in the Python path.
+- The repository structure is incomplete.
+
+Fix:
+
+Run notebooks from:
+
+```text
+01-rag-document-intelligence/
+```
+
+or keep the setup cell that adds `src/` to `sys.path`.
+
+---
+
+### Problem: ChromaDB directory not found
+
+The Streamlit app requires the vector store.
+
+Fix:
+
+Run Notebook 01 first, or run:
+
+```python
+from agro_rag.rag.vector_store import build_vector_store_from_chunks
+
+build_vector_store_from_chunks(
+    chunks_path="data/processed/document_chunks.parquet",
+    persist_directory="chroma_db",
+    collection_name="agro_environmental_documents",
+)
+```
+
+---
+
+### Problem: OpenAI API key not found
+
+This only affects LLM-based answers.
+
+Fix:
+
+Use retrieval-only mode or configure:
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:OPENAI_API_KEY="your_key_here"
+```
+
+---
+
+### Problem: No PDF documents found
+
+Notebook 01 will create a synthetic fallback dataset.
+
+This is acceptable for the first execution. Later, add real documents to:
+
+```text
+data/raw/mapbiomas/documents/
+data/raw/inpe/documents/
+```
+
+---
+
+## 14. Important Limitations
+
+This project is designed for:
+
+- evidence organization;
+- environmental screening;
+- document-based retrieval;
+- analyst support.
+
+It is not designed to determine:
+
+- illegal deforestation;
+- legal responsibility;
+- rural property compliance;
+- environmental crime;
+- final ESG approval or rejection.
+
+All outputs should be reviewed by a human analyst before operational, legal, financial or public use.
+
+---
+
+## 15. Completion Check
+
+The project is operational when the user can:
+
+1. run Notebook 01 successfully;
+2. run Notebook 02 successfully;
+3. launch the Streamlit app;
+4. retrieve evidence from ChromaDB;
+5. inspect retrieved chunks;
+6. generate or simulate RAG answers;
+7. review retrieval evaluation outputs.
