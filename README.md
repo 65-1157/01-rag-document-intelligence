@@ -1,11 +1,9 @@
 # 01-rag-document-intelligence
-# 01-rag-document-intelligence
-
 ## RAG Document Intelligence for Brazilian Deforestation and Land-Use Monitoring
 
 This project is part of the **Brazil Agro-Environmental AI Portfolio**.
 
-It implements a Retrieval-Augmented Generation system to organize, retrieve and explain evidence from Brazilian agro-environmental sources, focusing on:
+It implements a Retrieval-Augmented Generation (RAG) system to organize, retrieve and explain evidence from Brazilian agro-environmental sources, focusing on:
 
 1. **MapBiomas**
 2. **INPE / TerraBrasilis**
