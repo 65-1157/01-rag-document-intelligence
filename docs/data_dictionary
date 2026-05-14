@@ -1,0 +1,559 @@
+# Data Dictionary
+
+## 1. Overview
+
+This document describes the main fields used in the structured data layer of the project.
+
+The project combines simplified indicators from:
+
+1. MapBiomas
+2. INPE / TerraBrasilis / PRODES
+
+The main structured output is a municipality-year environmental panel.
+
+Main output files:
+
+```text
+data/processed/municipality_environmental_panel.parquet
+data/processed/municipality_environmental_panel_scored.parquet
+```
+
+The structured panel supports the RAG system by providing numerical evidence for environmental screening summaries.
+
+---
+
+## 2. Main Analytical Unit
+
+The main analytical unit is:
+
+```text
+municipality-year
+```
+
+This means each row represents one municipality in one reference year.
+
+Example:
+
+```text
+Municipality: Sinop
+State: MT
+Biome: Amazon
+Year: 2024
+```
+
+This level of aggregation is useful for a first version because it is simple, explainable and compatible with both MapBiomas and INPE / PRODES indicators.
+
+---
+
+## 3. Identification Columns
+
+| Column | Type | Description | Example |
+|---|---|---|---|
+| `municipality_code` | string | Official municipality identifier used to merge MapBiomas and INPE tables | `5107909` |
+| `municipality_name` | string | Municipality name | `Sinop` |
+| `state` | string | Brazilian state abbreviation | `MT` |
+| `biome` | string | Main biome associated with the municipality or record | `Amazon` |
+| `year` | integer | Reference year of the observation | `2024` |
+
+### Notes
+
+- `municipality_code` should be treated as a string to avoid merge problems caused by leading zeros or numeric formatting.
+- `year` should be treated as an integer.
+- The biome field may require careful interpretation because some municipalities can intersect more than one biome.
+
+---
+
+## 4. MapBiomas Input Indicators
+
+These indicators come from the MapBiomas structured table.
+
+Expected input file:
+
+```text
+data/interim/cleaned_mapbiomas/mapbiomas_municipality_year.parquet
+```
+
+Expected columns:
+
+| Column | Type | Unit | Description |
+|---|---|---|---|
+| `mapbiomas_forest_area_ha` | float | hectares | Forest area associated with the municipality-year record |
+| `mapbiomas_native_vegetation_area_ha` | float | hectares | Native vegetation area associated with the municipality-year record |
+| `mapbiomas_agriculture_area_ha` | float | hectares | Agriculture area associated with the municipality-year record |
+| `mapbiomas_pasture_area_ha` | float | hectares | Pasture area associated with the municipality-year record |
+
+### Interpretation
+
+MapBiomas indicators are used to describe land use, land cover and land-use change.
+
+They support questions such as:
+
+- How has native vegetation changed over time?
+- Is agriculture area increasing?
+- Is pasture area increasing?
+- Are land-use changes visible in the municipality-year record?
+
+### Important limitation
+
+MapBiomas land-use and land-cover indicators should not be interpreted as proof of illegal deforestation or legal non-compliance.
+
+---
+
+## 5. INPE / PRODES Input Indicator
+
+This indicator comes from the INPE / TerraBrasilis / PRODES structured table.
+
+Expected input file:
+
+```text
+data/interim/cleaned_inpe/inpe_prodes_municipality_year.parquet
+```
+
+Expected columns:
+
+| Column | Type | Unit | Description |
+|---|---|---|---|
+| `inpe_prodes_deforestation_area_ha` | float | hectares | Annual deforestation area associated with the municipality-year record, based on INPE / PRODES evidence |
+
+### Interpretation
+
+This indicator is used as the official deforestation monitoring component in the environmental screening score.
+
+It supports questions such as:
+
+- What does INPE / PRODES indicate about annual deforestation?
+- Which municipality-year records show higher deforestation area?
+- How does INPE evidence complement MapBiomas land-use evidence?
+
+### Important limitation
+
+INPE / PRODES deforestation evidence should not be interpreted alone as proof of illegal activity, responsibility or legal non-compliance.
+
+---
+
+## 6. Unified Environmental Panel
+
+The unified panel is created by merging the MapBiomas and INPE / PRODES tables.
+
+Output file:
+
+```text
+data/processed/municipality_environmental_panel.parquet
+```
+
+Merge keys:
+
+```text
+municipality_code
+year
+```
+
+Expected columns:
+
+| Column | Source | Description |
+|---|---|---|
+| `municipality_code` | MapBiomas / INPE | Municipality identifier |
+| `municipality_name` | MapBiomas | Municipality name |
+| `state` | MapBiomas | State abbreviation |
+| `biome` | MapBiomas | Biome |
+| `year` | MapBiomas / INPE | Reference year |
+| `mapbiomas_forest_area_ha` | MapBiomas | Forest area |
+| `mapbiomas_native_vegetation_area_ha` | MapBiomas | Native vegetation area |
+| `mapbiomas_agriculture_area_ha` | MapBiomas | Agriculture area |
+| `mapbiomas_pasture_area_ha` | MapBiomas | Pasture area |
+| `inpe_prodes_deforestation_area_ha` | INPE / PRODES | Annual deforestation area |
+
+---
+
+## 7. Derived Environmental Indicators
+
+These indicators are generated by the risk scoring pipeline.
+
+Module:
+
+```text
+src/agro_rag/structured/risk_score.py
+```
+
+Output file:
+
+```text
+data/processed/municipality_environmental_panel_scored.parquet
+```
+
+---
+
+### 7.1 Native Vegetation Loss
+
+| Column | Type | Unit | Description |
+|---|---|---|---|
+| `mapbiomas_native_vegetation_loss_ha` | float | hectares | Year-to-year reduction in native vegetation area |
+
+Calculation logic:
+
+```text
+previous_year_native_vegetation_area
+-
+current_year_native_vegetation_area
+```
+
+If the result is negative, it is clipped to zero.
+
+Interpretation:
+
+```text
+Higher values indicate greater reduction in native vegetation compared with the previous year.
+```
+
+Important limitation:
+
+```text
+Native vegetation loss is an environmental screening signal, not a legal conclusion.
+```
+
+---
+
+### 7.2 Agriculture or Pasture Expansion
+
+| Column | Type | Unit | Description |
+|---|---|---|---|
+| `mapbiomas_agriculture_or_pasture_expansion_ha` | float | hectares | Year-to-year increase in agriculture plus pasture area |
+
+Calculation logic:
+
+```text
+current_year_agriculture_area + current_year_pasture_area
+-
+previous_year_agriculture_area - previous_year_pasture_area
+```
+
+Equivalent conceptual form:
+
+```text
+current_year_agriculture_plus_pasture
+-
+previous_year_agriculture_plus_pasture
+```
+
+If the result is negative, it is clipped to zero.
+
+Interpretation:
+
+```text
+Higher values indicate expansion of agriculture and/or pasture area compared with the previous year.
+```
+
+Important limitation:
+
+```text
+Agriculture or pasture expansion does not automatically imply illegal deforestation.
+```
+
+---
+
+## 8. Normalized Score Components
+
+The risk scoring pipeline applies min-max normalization to selected indicators.
+
+Min-max normalization:
+
+```text
+normalized_value =
+    (value - minimum_value)
+    /
+    (maximum_value - minimum_value)
+```
+
+The normalized values range from 0 to 1.
+
+Generated columns:
+
+| Column | Description |
+|---|---|
+| `inpe_prodes_deforestation_area_ha_normalized` | Normalized INPE / PRODES deforestation component |
+| `mapbiomas_native_vegetation_loss_ha_normalized` | Normalized native vegetation loss component |
+| `mapbiomas_agriculture_or_pasture_expansion_ha_normalized` | Normalized agriculture/pasture expansion component |
+
+### Important note
+
+Normalization is calculated over the available dataset. Therefore, the score is relative to the records included in the current analysis.
+
+If the dataset changes, normalized values and scores may also change.
+
+---
+
+## 9. Environmental Risk Score
+
+| Column | Type | Range | Description |
+|---|---|---|---|
+| `environmental_risk_score` | float | 0 to 1 | Explainable environmental screening score |
+
+Default formula:
+
+```text
+environmental_risk_score =
+    0.50 * normalized_inpe_prodes_deforestation_area_ha
+  + 0.30 * normalized_mapbiomas_native_vegetation_loss_ha
+  + 0.20 * normalized_mapbiomas_agriculture_or_pasture_expansion_ha
+```
+
+### Interpretation
+
+The score is used to prioritize municipality-year records for deeper review.
+
+| Score Meaning | Interpretation |
+|---|---|
+| Higher score | Stronger environmental screening signal |
+| Lower score | Weaker environmental screening signal within the analyzed dataset |
+
+### Critical limitation
+
+The score is not:
+
+- proof of illegal deforestation;
+- proof of environmental crime;
+- proof of legal non-compliance;
+- final ESG classification;
+- regulatory conclusion.
+
+It is only an analytical screening indicator.
+
+---
+
+## 10. Environmental Risk Class
+
+| Column | Type | Description |
+|---|---|---|
+| `environmental_risk_class` | string | Categorical interpretation of the environmental risk score |
+
+Default classification:
+
+| Score Range | Class |
+|---|---|
+| 0.00 to 0.33 | `Low` |
+| 0.34 to 0.66 | `Medium` |
+| 0.67 to 1.00 | `High` |
+
+### Interpretation
+
+| Class | Meaning |
+|---|---|
+| `Low` | Lower environmental screening signal in the current dataset |
+| `Medium` | Intermediate environmental screening signal |
+| `High` | Higher environmental screening signal and stronger candidate for deeper review |
+
+### Important limitation
+
+A `High` class does not prove illegal deforestation.  
+A `Low` class does not guarantee absence of environmental risk.
+
+---
+
+## 11. Document Chunk Data Dictionary
+
+The document RAG pipeline creates a chunk-level table.
+
+Main output:
+
+```text
+data/processed/document_chunks.parquet
+```
+
+Expected columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `chunk_id` | string | Unique identifier for each document chunk |
+| `source` | string | Source family, such as MapBiomas or INPE |
+| `document_name` | string | Name of the source document |
+| `file_path` | string | Local path of the original document |
+| `page_number` | integer | Page number from which the chunk was extracted |
+| `year` | integer / nullable | Reference year, when available |
+| `theme` | string | Document theme |
+| `language` | string | Document language |
+| `chunk_index` | integer | Chunk number within the source page |
+| `chunk_text` | string | Text used for retrieval |
+| `chunk_word_count` | integer | Number of words in the chunk |
+| `chunk_char_count` | integer | Number of characters in the chunk |
+
+---
+
+## 12. Parsed Page Data Dictionary
+
+The PDF parsing step creates a page-level table.
+
+Typical output:
+
+```text
+data/interim/parsed_documents/mapbiomas_pages.parquet
+data/interim/parsed_documents/inpe_pages.parquet
+data/interim/parsed_documents/all_pages_clean.parquet
+```
+
+Expected columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `source` | string | Source family |
+| `document_name` | string | Document name |
+| `file_path` | string | Local file path |
+| `page_number` | integer | PDF page number |
+| `year` | integer / nullable | Reference year, when available |
+| `theme` | string | Main document theme |
+| `language` | string | Document language |
+| `text` | string | Raw extracted text |
+| `text_length` | integer | Number of characters in raw text |
+| `clean_text` | string | Cleaned text after preprocessing |
+| `clean_text_length` | integer | Number of characters in cleaned text |
+
+---
+
+## 13. Golden Questions Data Dictionary
+
+Golden questions are used to evaluate the RAG system.
+
+Output:
+
+```text
+data/processed/rag_eval_questions.csv
+```
+
+Expected columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `question_id` | string | Unique question identifier |
+| `question` | string | Evaluation question |
+| `expected_source` | string | Expected source family |
+| `expected_theme` | string | Expected theme to retrieve or discuss |
+| `expected_metadata` | string | Expected source metadata |
+| `expected_answer_type` | string | Expected answer category |
+| `unsafe_risk` | boolean | Whether the question may trigger unsafe legal overclaims |
+| `notes` | string | Evaluation notes |
+
+---
+
+## 14. Retrieval Evaluation Data Dictionary
+
+Retrieval evaluation output:
+
+```text
+reports/rag_retrieval_evaluation.csv
+```
+
+Expected columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `question_id` | string | Evaluation question ID |
+| `question` | string | Original question |
+| `expected_source` | string | Expected source family |
+| `expected_theme` | string | Expected theme |
+| `expected_answer_type` | string | Expected answer type |
+| `unsafe_risk` | boolean | Unsafe overclaim risk indicator |
+| `n_results` | integer | Number of retrieved chunks |
+| `source_hit_at_k` | integer | 1 if expected source appears in top-k, otherwise 0 |
+| `recall_at_k` | integer | Same as source hit in the first version |
+| `precision_at_k` | float | Fraction of top-k chunks matching expected source |
+| `retrieved_sources` | string | Sources retrieved |
+| `retrieved_documents` | string | Documents retrieved |
+| `top_chunk_id` | string | Highest-ranked chunk ID |
+| `top_distance` | float | Distance of top retrieved chunk |
+
+---
+
+## 15. Answer Evaluation Data Dictionary
+
+Answer evaluation output:
+
+```text
+reports/rag_answer_evaluation.csv
+```
+
+Expected columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `question_id` | string | Evaluation question ID |
+| `question` | string | Original question |
+| `expected_answer_type` | string | Expected answer category |
+| `unsafe_risk` | boolean | Whether the question has legal-overclaim risk |
+| `answer` | string | Generated answer |
+| `answer_length` | integer | Character count of generated answer |
+| `citation_or_evidence_present` | integer | 1 if evidence/citation terms are detected |
+| `limitation_present` | integer | 1 if limitation terms are detected |
+| `cautious_language_present` | integer | 1 if cautious language is detected |
+| `unsafe_claim_flag` | integer | 1 if unsafe legal claim patterns are detected |
+| `answer_score` | integer | Basic rule-based score from 0 to 3 |
+
+---
+
+## 16. Naming Conventions
+
+The project uses explicit prefixes to avoid ambiguity.
+
+| Prefix | Meaning |
+|---|---|
+| `mapbiomas_` | Indicator derived from MapBiomas data |
+| `inpe_` | Indicator derived from INPE / TerraBrasilis / PRODES |
+| `environmental_` | Project-derived environmental screening output |
+| `chunk_` | Document chunking output |
+| `clean_` | Text cleaning output |
+
+Examples:
+
+```text
+mapbiomas_native_vegetation_area_ha
+inpe_prodes_deforestation_area_ha
+environmental_risk_score
+chunk_text
+clean_text
+```
+
+---
+
+## 17. Units
+
+| Suffix | Meaning |
+|---|---|
+| `_ha` | hectares |
+| `_score` | normalized or weighted score |
+| `_class` | categorical class |
+| `_count` | count |
+| `_length` | character length |
+| `_id` | identifier |
+
+---
+
+## 18. Data Quality Notes
+
+Before using the panel, check:
+
+- missing municipality codes;
+- inconsistent year values;
+- duplicated municipality-year records;
+- negative area values;
+- unexpected zero values;
+- mismatched municipality codes between MapBiomas and INPE;
+- abrupt changes that may indicate source or preprocessing issues.
+
+---
+
+## 19. Interpretation Principle
+
+The structured indicators should be interpreted as:
+
+```text
+environmental evidence for screening
+```
+
+They should not be interpreted as:
+
+```text
+legal proof
+```
+
+The final principle is:
+
+> The data dictionary defines analytical variables used for evidence organization and screening. 
+  It does not define legal responsibility, environmental guilt or regulatory non-compliance.
