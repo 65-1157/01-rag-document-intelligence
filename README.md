@@ -57,10 +57,7 @@ This first version intentionally uses only two source families.
 
 The reduced scope keeps the project simpler, easier to evaluate and easier to explain in a portfolio or job interview.
 
-More details are available in:
-
-```text
-docs/data_sources.md
+More details are available in: docs/data_sources.md
 
 
 ## How to Run the Project
