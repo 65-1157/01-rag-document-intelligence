@@ -78,7 +78,7 @@ MapBiomas table
 → structured evidence for RAG
 
 ## 5. Repository Structure
-´´´ text 
+
 01-rag-document-intelligence/
 │
 ├── README.md
