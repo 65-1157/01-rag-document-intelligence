@@ -77,6 +77,8 @@ MapBiomas table
 → risk score
 → structured evidence for RAG
 
+![RAG Document Intelligence Architecture](reports/figures/architecture.png)
+
 ## 5. Repository Structure
 ``` text
 01-rag-document-intelligence/
