@@ -112,3 +112,9 @@ Thumbs.db
 
 .vscode/
 .idea/
+
+# Generated notebook outputs
+data/interim/**/*.parquet
+data/interim/**/*.csv
+data/processed/**/*.parquet
+reports/figures/environmental_risk_score_by_municipality.png
