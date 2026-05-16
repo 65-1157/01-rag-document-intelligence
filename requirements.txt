@@ -30,3 +30,4 @@ tqdm
 
 # Testing
 pytest
+torchvision
