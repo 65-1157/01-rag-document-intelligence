@@ -1,4 +1,7 @@
+# ============================================================
 # Python
+# ============================================================
+
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,48 +11,104 @@ __pycache__/
 dist/
 build/
 
+
+# ============================================================
 # Virtual environments
+# ============================================================
+
 .venv/
 venv/
 env/
 
+
+# ============================================================
 # Jupyter
+# ============================================================
+
 .ipynb_checkpoints/
 
+
+# ============================================================
 # Environment variables and secrets
+# ============================================================
+
 .env
 .env.*
 *.key
+*.pem
 
-# Data files
+
+# ============================================================
+# Generated data files
+# ============================================================
+
 data/raw/*
 data/interim/*
 data/processed/*
 
 # Keep folder structure
 !data/raw/.gitkeep
+!data/raw/mapbiomas/
 !data/raw/mapbiomas/.gitkeep
+!data/raw/inpe/
 !data/raw/inpe/.gitkeep
+
 !data/interim/.gitkeep
+!data/interim/parsed_documents/
 !data/interim/parsed_documents/.gitkeep
+!data/interim/cleaned_mapbiomas/
 !data/interim/cleaned_mapbiomas/.gitkeep
+!data/interim/cleaned_inpe/
 !data/interim/cleaned_inpe/.gitkeep
+
 !data/processed/.gitkeep
 
+# Optional small evaluation file allowed in GitHub
+!data/processed/rag_eval_questions.csv
+
+
+# ============================================================
 # Vector databases
+# ============================================================
+
 chroma_db/
 vector_store/
 *.faiss
 *.index
 
+
+# ============================================================
+# Reports generated locally
+# ============================================================
+
+reports/*.csv
+
+# Keep final report and figures
+!reports/final_report.md
+!reports/figures/
+!reports/figures/.gitkeep
+!reports/figures/architecture.png
+
+
+# ============================================================
 # Logs
+# ============================================================
+
 logs/
 *.log
 
+
+# ============================================================
 # OS files
+# ============================================================
+
 .DS_Store
 Thumbs.db
 
-# IDE
+
+# ============================================================
+# IDE files
+# ============================================================
+
 .vscode/
 .idea/
